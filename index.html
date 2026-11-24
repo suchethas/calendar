@@ -195,17 +195,15 @@
   .day.weekend:hover { background: color-mix(in srgb, var(--day) 18%, transparent); }
   .day.weekend .n { color: var(--day); }
 
-  /* today: highlighter swipe + pin */
+  /* today: circled in red pen, the loop overshooting where it started like a real hand-drawn circle */
+  :root {
+    --pen-circle: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 72' preserveAspectRatio='none'%3E%3Cpath d='M64 7C33 1 6 15 6 37c0 22 33 31 60 26 23-4 32-21 25-36C84 13 63 5 40 9' fill='none' stroke='%23ff5a5f' stroke-width='4.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  }
   .day.today .n {
     color: var(--ink);
-    padding: 0 4px;
-    background: linear-gradient(transparent 45%, var(--highlight) 45% 92%, transparent 92%);
-  }
-  .day.today::after {
-    content: "📍";
-    position: absolute;
-    top: 4px; right: 6px;
-    font-size: .95rem;
+    padding: 3px 10px;
+    margin: -3px -6px;
+    background: var(--pen-circle) center / 100% 100% no-repeat;
   }
   .day.selected { background: color-mix(in srgb, var(--day) 14%, transparent); }
 
@@ -368,8 +366,7 @@
   }
   .ring.full .pct { font-size: 1.1rem; }
   .ring.empty { visibility: hidden; }
-  .week-day.today .num { background: linear-gradient(transparent 40%, var(--highlight) 40% 92%, transparent 92%); }
-  .week-day.today .wd::after { content: " 📍"; }
+  .week-day.today .num { padding: 6px 16px; margin: -6px -10px; background: var(--pen-circle) center / 100% 100% no-repeat; }
 
   /* ruled notebook lines, items sit on them */
   .week-day .body {
@@ -666,7 +663,6 @@
     h1 .year, .calendar.wide h1 .year { font-size: 1.3rem; }
     .day { font-size: 1.1rem; padding: 4px 5px; }
     .day .mark { font-size: .72rem; line-height: 16px; min-width: 16px; padding: 0 4px; bottom: 3px; right: 3px; }
-    .day.today::after { font-size: .75rem; top: 2px; right: 3px; }
     .day .mark.all-done { font-size: .72rem; }
     .week { grid-template-columns: 1fr; }
     /* solid line between days */
@@ -688,7 +684,7 @@
       <div class="right">
         <div class="nav">
           <button class="btn" id="prev" aria-label="Previous">&larr;</button>
-          <button class="btn" id="today">📍 today</button>
+          <button class="btn" id="today">⭕ today</button>
           <button class="btn" id="next" aria-label="Next">&rarr;</button>
         </div>
         <button class="sync" id="syncBtn" title="Sync settings"></button>
