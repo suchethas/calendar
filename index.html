@@ -1,0 +1,1417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Calendar</title>
+<meta name="theme-color" content="#fdf0e4">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Calendar">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Patrick+Hand&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #2a2a2a;
+    --paper: #fffdf7;
+    --rule: rgba(42, 42, 42, .16);
+    --divider: rgba(42, 42, 42, .22);
+    --highlight: #ffe45c;
+    --today: #ff5a5f;
+    /* one marker colour per weekday, Mon → Sun */
+    --mon: #ff6b6b;
+    --tue: #ff9f43;
+    --wed: #e8b500;
+    --thu: #2fbf71;
+    --fri: #3d9bff;
+    --sat: #9b6bff;
+    --sun: #ff5fa8;
+    --row: 32px; /* ruled line spacing in week view */
+    --sketch: 255px 15px 225px 15px / 15px 225px 15px 255px;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: "Patrick Hand", "Comic Sans MS", "Chalkboard SE", cursive;
+    color: var(--ink);
+    background-color: #fdf0e4;
+    background-image:
+      radial-gradient(#ffb5c8 1.6px, transparent 2px),
+      radial-gradient(#a9d8ff 1.6px, transparent 2px);
+    background-size: 44px 44px;
+    background-position: 0 0, 22px 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: max(32px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(32px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  }
+
+  /* ---------- the paper card, taped down ---------- */
+  .calendar {
+    position: relative;
+    width: min(640px, 100%);
+    background: var(--paper);
+    border-radius: 6px;
+    box-shadow: 0 2px 0 rgba(0,0,0,.04), 0 12px 32px rgba(90, 60, 30, .14);
+    padding: 22px 22px 24px;
+  }
+  .calendar::before, .calendar::after {
+    content: "";
+    position: absolute;
+    top: -12px;
+    width: 96px; height: 26px;
+    opacity: .85;
+    background: repeating-linear-gradient(45deg, rgba(255,255,255,.35) 0 6px, transparent 6px 12px);
+  }
+  .calendar::before { left: 28px; background-color: #ff9ec4; transform: rotate(-5deg); }
+  .calendar::after  { right: 28px; background-color: #8fd3ff; transform: rotate(4deg); }
+
+  header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  h1 {
+    margin: 4px 0 0;
+    font-family: "Caveat", cursive;
+    font-size: 2.4rem;
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
+    transform: rotate(-1.5deg);
+  }
+  h1 .emoji { font-size: .8em; margin-right: 4px; display: inline-block; transform: rotate(-8deg); }
+  h1 .name {
+    background: linear-gradient(transparent 58%, var(--title-color, var(--highlight)) 58% 90%, transparent 90%);
+    padding: 0 4px;
+  }
+  h1 .year { font-size: 1.5rem; opacity: .5; }
+
+  .right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+  .nav { display: flex; gap: 6px; align-items: center; }
+  .btn {
+    font: inherit;
+    font-size: 1.05rem;
+    color: var(--ink);
+    background: #fff1a8;
+    border: none;
+    border-radius: var(--sketch);
+    padding: 3px 12px;
+    cursor: pointer;
+    transition: transform .1s;
+  }
+  .nav .btn:nth-child(1) { background: #ffd3e2; }
+  .nav .btn:nth-child(3) { background: #cfe9ff; }
+  .btn:hover { transform: rotate(-4deg) scale(1.05); }
+  .btn:active { transform: scale(.95); }
+  .btn:disabled { opacity: .5; cursor: default; transform: none; }
+
+  .sync {
+    font: inherit;
+    font-size: .92rem;
+    color: var(--ink);
+    background: none;
+    border: none;
+    padding: 0 2px;
+    cursor: pointer;
+    opacity: .65;
+    white-space: nowrap;
+  }
+  .sync:hover { opacity: 1; }
+  .sync.error { color: var(--today); opacity: 1; }
+
+  .back {
+    font: inherit;
+    font-size: 1rem;
+    color: var(--ink);
+    background: none;
+    border: none;
+    padding: 0;
+    margin: -6px 0 10px;
+    cursor: pointer;
+    opacity: .7;
+    text-decoration: underline wavy #ff9ec4;
+    text-underline-offset: 4px;
+  }
+  .back:hover { opacity: 1; }
+
+  /* ---------- month view: a ruled table, no boxes ---------- */
+  .weekdays, .grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+  }
+  .weekdays div {
+    text-align: center;
+    font-size: 1.05rem;
+    color: var(--day);
+    padding-bottom: 4px;
+    position: relative;
+  }
+  /* chunky marker stroke under each weekday letter */
+  .weekdays div::after {
+    content: "";
+    position: absolute;
+    left: 18%; right: 18%; bottom: 0;
+    height: 4px;
+    border-radius: 3px;
+    background: var(--day);
+    transform: rotate(-2deg);
+  }
+  .weekdays div:nth-child(even)::after { transform: rotate(2deg); }
+
+  .day {
+    font: inherit;
+    font-size: 1.35rem;
+    color: var(--ink);
+    aspect-ratio: 4 / 3;
+    background: transparent;
+    border: none;
+    border-bottom: 1.5px solid var(--divider);
+    border-right: 1.5px dashed var(--rule);
+    border-radius: 0;
+    cursor: pointer;
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-start;
+    padding: 6px 8px;
+    transition: background .15s;
+  }
+  .day:nth-child(7n) { border-right: none; }
+  .day:hover { background: color-mix(in srgb, var(--day) 16%, transparent); }
+  .day:hover .n { transform: rotate(-8deg) scale(1.15); }
+  .day .n { display: inline-block; transition: transform .15s; }
+  .day:focus-visible { outline: 2px dashed var(--day); outline-offset: -4px; }
+  .day.empty { pointer-events: none; }
+  .day.weekend { background: color-mix(in srgb, var(--day) 8%, transparent); }
+  .day.weekend:hover { background: color-mix(in srgb, var(--day) 18%, transparent); }
+  .day.weekend .n { color: var(--day); }
+
+  /* today: highlighter swipe + pin */
+  .day.today .n {
+    color: var(--ink);
+    padding: 0 4px;
+    background: linear-gradient(transparent 45%, var(--highlight) 45% 92%, transparent 92%);
+  }
+  .day.today::after {
+    content: "📍";
+    position: absolute;
+    top: 4px; right: 6px;
+    font-size: .95rem;
+  }
+  .day.selected { background: color-mix(in srgb, var(--day) 14%, transparent); }
+
+  .day .mark {
+    position: absolute;
+    bottom: 5px; right: 6px;
+    min-width: 20px;
+    padding: 0 6px;
+    font-size: .85rem;
+    line-height: 20px;
+    text-align: center;
+    color: #fff;
+    background: var(--day);
+    border-radius: var(--sketch);
+  }
+  .day .mark.all-done { background: none; font-size: 1rem; padding: 0; }
+
+  /* ---------- week view ---------- */
+  .calendar.wide { width: min(1700px, 100%); padding: 24px 26px 26px; }
+  .calendar.wide h1 { font-size: 2.8rem; }
+  .calendar.wide h1 .year { font-size: 1.8rem; }
+
+  .week-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 270px;
+    gap: 26px;
+    align-items: stretch;
+  }
+  .week {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+  .week-day {
+    display: flex;
+    flex-direction: column;
+    /* fill the screen height below the header */
+    min-height: max(480px, calc(100vh - 200px));
+    padding: 4px 10px 10px;
+    border-right: 1.5px dashed var(--divider);
+    transition: background .15s;
+  }
+  .week-day:last-child { border-right: none; }
+  .week-day.weekend { background: color-mix(in srgb, var(--day) 7%, transparent); }
+  .week-day .label {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 4px;
+  }
+  .week-day .emo { font-size: 1.3rem; line-height: 1.2; }
+  .week-day .wd { font-size: 1.05rem; color: var(--day); text-transform: lowercase; }
+  .week-day .num {
+    font-family: "Caveat", cursive;
+    font-size: 3rem;
+    font-weight: 700;
+    line-height: 1;
+    padding: 0 6px;
+  }
+  .week-day .label::after {
+    content: "";
+    display: block;
+    width: 80%;
+    height: 5px;
+    margin-top: 6px;
+    border-radius: 3px;
+    background: var(--day);
+    transform: rotate(-1.5deg);
+  }
+  .week-day:nth-child(even) .label::after { transform: rotate(1.5deg); }
+  .week-day.today .num { background: linear-gradient(transparent 40%, var(--highlight) 40% 92%, transparent 92%); }
+  .week-day.today .wd::after { content: " 📍"; }
+
+  /* ruled notebook lines, items sit on them */
+  .week-day .body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    background: repeating-linear-gradient(transparent 0 calc(var(--row) - 1px), var(--rule) calc(var(--row) - 1px) var(--row));
+  }
+  .yay {
+    font-size: .95rem;
+    line-height: var(--row);
+    color: var(--day);
+    text-align: center;
+  }
+
+  /* scratchpad: a sticky note */
+  .scratch {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    padding: 18px 16px 14px;
+    background: #fff3a6;
+    box-shadow: 2px 6px 14px rgba(120, 90, 0, .18);
+    transform: rotate(1.2deg);
+    align-self: start;
+    min-height: min(560px, calc(100vh - 200px));
+    --day: #e08a00;
+  }
+  .scratch::before {
+    content: "";
+    position: absolute;
+    top: -12px; left: 50%;
+    width: 100px; height: 26px;
+    margin-left: -50px;
+    background: rgba(143, 211, 255, .75);
+    transform: rotate(-3deg);
+  }
+  .scratch h3 {
+    margin: 0 0 4px;
+    font-family: "Caveat", cursive;
+    font-size: 2.1rem;
+    line-height: 1.1;
+  }
+  .scratch .lines {
+    background: repeating-linear-gradient(transparent 0 calc(var(--row) - 1px), rgba(160, 120, 0, .22) calc(var(--row) - 1px) var(--row));
+  }
+  .scratch .hint { margin: auto 0 0; padding-top: 12px; font-size: .95rem; opacity: .55; }
+
+  /* drop target highlight */
+  .week-day.over { background: color-mix(in srgb, var(--day) 18%, transparent); }
+  .scratch.over { box-shadow: 0 0 0 3px #ffb300, 2px 6px 14px rgba(120, 90, 0, .18); }
+
+  /* ---------- to-do items ---------- */
+  .items {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .item {
+    display: flex;
+    align-items: flex-start;
+    gap: 7px;
+    padding: 0 3px;
+    font-size: 1.12rem;
+    line-height: var(--row);
+    cursor: grab;
+  }
+  .item:hover { background: color-mix(in srgb, var(--day) 10%, transparent); }
+  .item.dragging { opacity: .3; }
+  .item .txt { flex: 1; min-width: 0; overflow-wrap: anywhere; outline: none; }
+  .item .txt[contenteditable="true"] {
+    cursor: text;
+    background: #fff;
+    border-radius: 4px;
+    box-shadow: 0 0 0 2px var(--day);
+    padding: 0 3px;
+  }
+  .item.done .txt {
+    text-decoration: line-through;
+    text-decoration-thickness: 2px;
+    text-decoration-color: var(--day);
+    opacity: .4;
+  }
+  .item .bullet { flex: 0 0 auto; color: var(--day); }
+
+  .check {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 0 0 auto;
+    position: relative;
+    width: 17px; height: 17px;
+    margin: 7px 0 0;
+    border: 2px solid var(--day);
+    border-radius: var(--sketch);
+    background: #fff;
+    cursor: pointer;
+  }
+  .check:checked { background: var(--day); }
+  .check:checked::after {
+    content: "✓";
+    position: absolute;
+    left: 1px; top: -9px;
+    font-size: 1.2rem;
+    color: #fff;
+  }
+  .item.done .check { opacity: .5; }
+  .check:focus-visible { outline: 2px dashed var(--day); outline-offset: 2px; }
+
+  .del, .mv {
+    flex: 0 0 auto;
+    font: inherit;
+    font-size: 1.1rem;
+    line-height: var(--row);
+    color: var(--ink);
+    background: none;
+    border: none;
+    padding: 0 2px;
+    cursor: pointer;
+    opacity: 0;
+  }
+  .mv { font-size: 1rem; }
+  .item:hover .del, .item:focus-within .del,
+  .item:hover .mv, .item:focus-within .mv { opacity: .45; }
+  .del:hover, .mv:hover { opacity: 1 !important; }
+  /* touch screens have no hover: always show the item buttons */
+  @media (hover: none) {
+    .del, .mv { opacity: .45; padding: 0 6px; }
+    .item { cursor: default; }
+  }
+
+  .placeholder { list-style: none; height: 0; margin: 0; border-top: 3px dashed var(--day); }
+
+  input.add {
+    width: 100%;
+    height: var(--row);
+    padding: 0 3px;
+    font: inherit;
+    font-size: 1.05rem;
+    color: var(--ink);
+    background: transparent;
+    border: none;
+    border-radius: 0;
+  }
+  input.add::placeholder { color: color-mix(in srgb, var(--day) 70%, #888); opacity: .75; }
+  input.add:focus { outline: none; background: color-mix(in srgb, var(--day) 10%, transparent); }
+
+  /* ---------- pop-up sheets (move + sync settings) ---------- */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: rgba(60, 40, 20, .28);
+  }
+  .sheet {
+    position: relative;
+    width: min(400px, 100%);
+    max-height: calc(100vh - 32px);
+    overflow: auto;
+    padding: 24px 20px 20px;
+    background: var(--paper);
+    border-radius: 6px;
+    box-shadow: 0 14px 40px rgba(60, 40, 20, .3);
+    transform: rotate(-.6deg);
+    animation: drop .18s ease-out;
+  }
+  @keyframes drop { from { transform: translateY(-12px) rotate(-2deg); opacity: 0; } }
+  .sheet h2 { margin: 0 28px 6px 0; font-family: "Caveat", cursive; font-size: 2rem; line-height: 1.1; overflow-wrap: anywhere; }
+  .sheet h3 { margin: 0 0 4px; font-family: "Caveat", cursive; font-size: 1.6rem; }
+  .sheet .x {
+    position: absolute; top: 8px; right: 10px;
+    font: inherit; font-size: 1.5rem; line-height: 1;
+    background: none; border: none; cursor: pointer; color: var(--ink); opacity: .6;
+  }
+  .sheet .x:hover { opacity: 1; }
+  .sheet .small { font-size: .95rem; line-height: 1.35; opacity: .8; margin: 4px 0; }
+  .sheet a { color: var(--fri); }
+  .sheet label { display: block; margin-top: 12px; font-size: .95rem; opacity: .85; }
+  .sheet label input, .sheet input[type="date"] {
+    display: block;
+    width: 100%;
+    margin-top: 2px;
+    padding: 4px 2px;
+    font: inherit;
+    font-size: 1.05rem;
+    color: var(--ink);
+    background: transparent;
+    border: none;
+    border-bottom: 2px dashed rgba(42, 42, 42, .35);
+    border-radius: 0;
+  }
+  .sheet label input:focus, .sheet input[type="date"]:focus { outline: none; border-bottom-style: solid; border-bottom-color: var(--fri); }
+  .sheet hr { border: none; border-top: 2px dashed var(--rule); margin: 18px 0 14px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+  .actions.left { justify-content: flex-start; margin-top: 6px; }
+  .msg { min-height: 1.3em; margin: 10px 0 0; font-size: .95rem; line-height: 1.35; }
+  .msg.bad { color: var(--today); }
+
+  .move-days { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 10px; }
+  .pick {
+    font: inherit;
+    color: var(--ink);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 6px 2px;
+    background: color-mix(in srgb, var(--day, #e08a00) 15%, white);
+    border: none;
+    border-radius: var(--sketch);
+    cursor: pointer;
+    line-height: 1.15;
+  }
+  .pick:hover { background: color-mix(in srgb, var(--day, #e08a00) 30%, white); }
+  .pick .pe { font-size: 1.1rem; }
+  .pick .pd { font-family: "Caveat", cursive; font-size: 1.5rem; font-weight: 700; }
+  .pick .pw { font-size: .85rem; color: var(--day); }
+  .pick.current { outline: 2px dashed var(--day, #e08a00); outline-offset: 2px; }
+  .pick.wide { width: 100%; flex-direction: row; justify-content: center; gap: 6px; margin-top: 10px; padding: 8px; font-size: 1.05rem; background: #fff3a6; }
+  .date-row { display: flex; gap: 8px; align-items: flex-end; margin-top: 12px; }
+  .date-row input { flex: 1; }
+
+  /* medium screens: scratchpad goes under the week */
+  @media (max-width: 1000px) {
+    .week-layout { grid-template-columns: 1fr; }
+    .scratch { transform: none; min-height: 0; }
+  }
+  /* phones */
+  @media (max-width: 640px) {
+    body { padding-top: max(26px, env(safe-area-inset-top)); padding-left: max(8px, env(safe-area-inset-left)); padding-right: max(8px, env(safe-area-inset-right)); align-items: flex-start; }
+    .calendar, .calendar.wide { padding: 18px 12px 16px; }
+    header { flex-wrap: wrap; }
+    h1, .calendar.wide h1 { font-size: 2rem; }
+    h1 .year, .calendar.wide h1 .year { font-size: 1.3rem; }
+    .day { font-size: 1.1rem; padding: 4px 5px; }
+    .day .mark { font-size: .72rem; line-height: 16px; min-width: 16px; padding: 0 4px; bottom: 3px; right: 3px; }
+    .day.today::after { font-size: .75rem; top: 2px; right: 3px; }
+    .week { grid-template-columns: 1fr; }
+    .week-day { min-height: 120px; flex-direction: row; gap: 12px; border-right: none; border-bottom: 1.5px dashed var(--divider); padding: 10px 4px; }
+    .week-day .label { flex: 0 0 62px; }
+    .week-day .num { font-size: 2.2rem; }
+  }
+</style>
+</head>
+<body>
+  <main class="calendar">
+    <header>
+      <h1 id="title"></h1>
+      <div class="right">
+        <div class="nav">
+          <button class="btn" id="prev" aria-label="Previous">&larr;</button>
+          <button class="btn" id="today">📍 today</button>
+          <button class="btn" id="next" aria-label="Next">&rarr;</button>
+        </div>
+        <button class="sync" id="syncBtn" title="Sync settings"></button>
+      </div>
+    </header>
+
+    <section id="monthView">
+      <div class="weekdays" id="weekdays"></div>
+      <div class="grid" id="grid"></div>
+    </section>
+
+    <section id="weekView" hidden>
+      <button class="back" id="back">&larr; back to month 🗓️</button>
+      <div class="week-layout">
+        <div class="week" id="week"></div>
+        <aside class="scratch" id="scratch">
+          <h3>📝 scratchpad</h3>
+          <div class="lines">
+            <input class="add" data-list="scratch" id="scratchAdd" placeholder="+ jot something down" aria-label="Add to scratchpad">
+            <ul class="items" id="scratchList"></ul>
+          </div>
+          <p class="hint">✨ drag things onto a day (or tap ↪ to move)</p>
+        </aside>
+      </div>
+    </section>
+  </main>
+
+  <!-- move an item to another day -->
+  <div class="overlay" id="moveSheet" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="moveTitle">
+      <button class="x" data-close aria-label="Close">&times;</button>
+      <h2 id="moveTitle"></h2>
+      <div class="move-days" id="moveDays"></div>
+      <button class="pick wide" id="moveScratch">📝 scratchpad</button>
+      <div class="date-row">
+        <input type="date" id="moveDate" aria-label="Another date">
+        <button class="btn" id="moveDateGo">move</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- sync + backup settings -->
+  <div class="overlay" id="settingsSheet" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="setTitle">
+      <button class="x" data-close aria-label="Close">&times;</button>
+      <h2 id="setTitle">☁️ sync with GitHub</h2>
+      <p class="small">Your to-dos are always saved on this device. Connect a <b>private</b> GitHub repo to back them up and see the same list on your phone and laptop.</p>
+      <label>GitHub username
+        <input id="setOwner" autocomplete="off" autocapitalize="off" spellcheck="false">
+      </label>
+      <label>private repo name
+        <input id="setRepo" autocomplete="off" autocapitalize="off" spellcheck="false">
+      </label>
+      <label>access token
+        <input id="setToken" type="password" autocomplete="off" autocapitalize="off" spellcheck="false">
+      </label>
+      <p class="small">Make one at <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">GitHub → fine-grained tokens</a>: give it access to <b>only</b> the data repo, with <b>Contents: Read and write</b>. It's stored on this device only.</p>
+      <div class="actions">
+        <button class="btn" id="disconnectBtn">disconnect</button>
+        <button class="btn" id="connectBtn">save &amp; sync</button>
+      </div>
+      <p class="msg" id="setMsg" role="status"></p>
+      <hr>
+      <h3>💾 backup</h3>
+      <p class="small">Download everything as a file, or load a backup (it's merged in, nothing is lost).</p>
+      <div class="actions left">
+        <button class="btn" id="exportBtn">⬇ download</button>
+        <button class="btn" id="importBtn">⬆ restore</button>
+        <input type="file" id="importFile" accept="application/json,.json" hidden>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  const MONTH_EMOJI = ["❄️","💌","🌱","🌷","🌼","☀️","🍉","🏖️","🍎","🎃","🍂","🎄"];
+  const MONTH_COLOR = ["#bfe3ff","#ffc2d9","#c8f2b0","#ffd0e8","#fff08a","#ffe07a","#ffb8b8","#a8e9ff","#ffcf9e","#ffc078","#ffd59a","#c4f0c8"];
+  const SHORT = MONTHS.map(m => m.slice(0, 3));
+  const WEEKDAYS = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+  // Monday-first index (Mon=0 … Sun=6)
+  const DAY_COLOR = ["var(--mon)","var(--tue)","var(--wed)","var(--thu)","var(--fri)","var(--sat)","var(--sun)"];
+  const DAY_EMOJI = ["☕","🌮","🐪","⚡","🎉","🌈","😴"];
+  const DAY_LETTER = ["M","T","W","T","F","S","S"];
+
+  const KEY_DATA = "calendar-planner-v2";
+  const KEY_V1 = "calendar-planner-v1";
+  const KEY_NOTES = "cartoon-calendar-notes";
+  const KEY_META = "calendar-sync-meta";
+  const KEY_SETTINGS = "calendar-gh-settings";
+  // window.CAL_TEST is only ever set by local test pages, never in normal use
+  const TEST = window.CAL_TEST || {};
+  const API = TEST.api || "https://api.github.com";
+  const DATA_PATH = TEST.path || "data.json";
+
+  /* ---------- date helpers ---------- */
+  function mIdx(date) { return (date.getDay() + 6) % 7; }
+  function mondayOf(date) { return new Date(date.getFullYear(), date.getMonth(), date.getDate() - mIdx(date)); }
+  const keyOf = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  const sameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  const addDays = (date, n) => new Date(date.getFullYear(), date.getMonth(), date.getDate() + n);
+  const isWeekend = date => date.getDay() === 0 || date.getDay() === 6;
+  const dateFromKey = key => new Date(key + "T00:00");
+  const isDateKey = s => /^\d{4}-\d{2}-\d{2}$/.test(s);
+
+  const $ = id => document.getElementById(id);
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  const loadJSON = k => { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } };
+
+  /* ---------- view state ---------- */
+  let now = new Date();
+  let view = "month";             // "month" | "week"
+  let viewYear = now.getFullYear();
+  let viewMonth = now.getMonth();
+  let weekStart = mondayOf(now);  // Monday of the week shown in week view
+  let selectedKey = null;
+  let drag = null;                // { id } while dragging an item
+  let moveId = null;              // item being moved via the move sheet
+  let pendingRender = false;
+
+  /* ---------- data ----------
+     { items: { id: {id, text, done, list, order, updatedAt} }, deleted: { id: timestamp } }
+     list is "YYYY-MM-DD" or "scratch". Per-item timestamps let two devices merge cleanly. */
+  let data = loadData();
+  let meta = loadJSON(KEY_META) || { sha: null, dirty: false };
+  let settings = loadJSON(KEY_SETTINGS) || {};
+
+  function cleanItem(it) {
+    if (!it || typeof it.id !== "string" || typeof it.text !== "string") return null;
+    const list = it.list === "scratch" || isDateKey(it.list) ? it.list : null;
+    if (!list) return null;
+    return {
+      id: it.id, text: it.text.slice(0, 2000), done: !!it.done, list,
+      order: Number.isFinite(it.order) ? it.order : 0,
+      updatedAt: Number.isFinite(it.updatedAt) ? it.updatedAt : 0,
+    };
+  }
+
+  // accepts the current format, the older list format, or the very first free-text notes
+  function normalize(raw) {
+    const out = { items: {}, deleted: {} };
+    if (!raw || typeof raw !== "object") return out;
+    const t = Date.now();
+    if (raw.items && typeof raw.items === "object") {
+      for (const it of Object.values(raw.items)) { const c = cleanItem(it); if (c) out.items[c.id] = c; }
+      for (const [id, ts] of Object.entries(raw.deleted || {})) if (Number.isFinite(ts)) out.deleted[id] = ts;
+      return out;
+    }
+    const addList = (list, arr) => (arr || []).forEach((it, i) => {
+      const c = cleanItem({ ...it, id: String(it.id || uid()), list, order: i + 1, updatedAt: t });
+      if (c) out.items[c.id] = c;
+    });
+    if (raw.todos || raw.scratch) {
+      for (const [k, arr] of Object.entries(raw.todos || {})) if (isDateKey(k)) addList(k, arr);
+      addList("scratch", raw.scratch);
+      return out;
+    }
+    for (const [k, text] of Object.entries(raw)) {
+      if (!isDateKey(k) || typeof text !== "string") continue;
+      addList(k, text.split("\n").map(s => s.trim()).filter(Boolean).map(s => ({ text: s, done: false })));
+    }
+    return out;
+  }
+
+  function loadData() {
+    const v2 = loadJSON(KEY_DATA);
+    if (v2 && v2.items) return normalize(v2);
+    const v1 = loadJSON(KEY_V1);
+    if (v1 && v1.todos) return normalize(v1);
+    return normalize(loadJSON(KEY_NOTES));
+  }
+
+  // newest edit of each item wins; a delete wins over older edits
+  function merge(a, b) {
+    const out = { items: {}, deleted: {} };
+    for (const src of [a.deleted, b.deleted])
+      for (const [id, ts] of Object.entries(src)) out.deleted[id] = Math.max(out.deleted[id] || 0, ts);
+    const ids = new Set([...Object.keys(a.items), ...Object.keys(b.items)]);
+    for (const id of ids) {
+      const x = a.items[id], y = b.items[id];
+      const pick = !x ? y : !y ? x : (y.updatedAt > x.updatedAt ? y : x);
+      if (out.deleted[id] && out.deleted[id] >= pick.updatedAt) continue;
+      out.items[id] = pick;
+    }
+    const cutoff = Date.now() - 90 * 864e5; // forget very old deletions
+    for (const [id, ts] of Object.entries(out.deleted)) if (ts < cutoff) delete out.deleted[id];
+    return out;
+  }
+
+  const sortKeys = v => Array.isArray(v) ? v.map(sortKeys)
+    : v && typeof v === "object" ? Object.keys(v).sort().reduce((o, k) => (o[k] = sortKeys(v[k]), o), {}) : v;
+  const stable = v => JSON.stringify(sortKeys(v));
+
+  function itemsIn(list) {
+    return Object.values(data.items).filter(i => i.list === list)
+      .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
+  }
+
+  function saveLocal() { localStorage.setItem(KEY_DATA, JSON.stringify(data)); }
+  function saveMeta() { localStorage.setItem(KEY_META, JSON.stringify(meta)); }
+
+  // every change: save on this device right away, then sync to GitHub a moment later
+  function commit() {
+    saveLocal();
+    meta.dirty = true;
+    saveMeta();
+    render();
+    schedulePush();
+  }
+
+  function addItem(list, text) {
+    const last = itemsIn(list).pop();
+    const id = uid();
+    data.items[id] = { id, text, done: false, list, order: last ? last.order + 1 : 1, updatedAt: Date.now() };
+    commit();
+  }
+
+  function updateItem(id, changes) {
+    const it = data.items[id];
+    if (!it) return;
+    Object.assign(it, changes, { updatedAt: Date.now() });
+    commit();
+  }
+
+  function removeItem(id) {
+    delete data.items[id];
+    data.deleted[id] = Date.now();
+    commit();
+  }
+
+  function moveItem(id, toList, index) {
+    const it = data.items[id];
+    if (!it) return;
+    const others = itemsIn(toList).filter(i => i.id !== id);
+    const prev = others[index - 1], next = others[index];
+    const order = prev && next ? (prev.order + next.order) / 2 : prev ? prev.order + 1 : next ? next.order - 1 : 1;
+    updateItem(id, { list: toList, order });
+  }
+
+  /* ---------- rendering ---------- */
+  function render() {
+    const active = document.activeElement;
+    // don't redraw under someone who's in the middle of editing an item
+    if (active && active.isContentEditable) { pendingRender = true; return; }
+    pendingRender = false;
+    // keep a half-typed "+ add" line (and its focus) across redraws
+    let keep = null;
+    if (active && active.matches && active.matches("input.add")) {
+      keep = { list: active.dataset.list, value: active.value, pos: active.selectionStart };
+    }
+
+    $("monthView").hidden = view !== "month";
+    $("weekView").hidden = view !== "week";
+    document.querySelector(".calendar").classList.toggle("wide", view === "week");
+    view === "month" ? renderMonth() : renderWeek();
+
+    if (keep) {
+      const input = document.querySelector(`input.add[data-list="${keep.list}"]`);
+      if (input) {
+        input.value = keep.value;
+        input.focus();
+        try { input.setSelectionRange(keep.pos, keep.pos); } catch (e) {}
+      }
+    }
+  }
+
+  function setTitle(month, text, year) {
+    const t = $("title");
+    t.style.setProperty("--title-color", MONTH_COLOR[month]);
+    t.innerHTML = `<span class="emoji">${MONTH_EMOJI[month]}</span><span class="name">${text}</span> <span class="year">${year}</span>`;
+  }
+
+  function renderMonth() {
+    setTitle(viewMonth, MONTHS[viewMonth], viewYear);
+
+    const head = $("weekdays");
+    head.innerHTML = "";
+    DAY_LETTER.forEach((l, i) => {
+      const d = document.createElement("div");
+      d.textContent = l;
+      d.style.setProperty("--day", DAY_COLOR[i]);
+      head.appendChild(d);
+    });
+
+    const byList = {};
+    for (const it of Object.values(data.items)) (byList[it.list] = byList[it.list] || []).push(it);
+
+    const grid = $("grid");
+    grid.innerHTML = "";
+    const first = new Date(viewYear, viewMonth, 1);
+    const leading = mIdx(first);
+    const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+    const trailing = (7 - ((leading + daysInMonth) % 7)) % 7; // finish the last row so the lines run full width
+
+    const blank = i => {
+      const b = document.createElement("div");
+      b.className = "day empty";
+      b.style.setProperty("--day", DAY_COLOR[i % 7]);
+      grid.appendChild(b);
+    };
+    for (let i = 0; i < leading; i++) blank(i);
+
+    for (let d = 1; d <= daysInMonth; d++) {
+      const date = new Date(viewYear, viewMonth, d);
+      const key = keyOf(date);
+      const items = byList[key] || [];
+      const open = items.filter(x => !x.done).length;
+
+      const btn = document.createElement("button");
+      btn.className = "day";
+      btn.style.setProperty("--day", DAY_COLOR[mIdx(date)]);
+      btn.innerHTML = `<span class="n">${d}</span>`;
+      btn.setAttribute("aria-label", `${MONTHS[viewMonth]} ${d}, ${viewYear}${items.length ? `, ${open} of ${items.length} to-dos open` : ""}`);
+      if (sameDay(date, now)) btn.classList.add("today");
+      if (isWeekend(date)) btn.classList.add("weekend");
+      if (key === selectedKey) btn.classList.add("selected");
+      if (items.length) {
+        const mark = document.createElement("span");
+        mark.className = "mark" + (open ? "" : " all-done");
+        mark.textContent = open ? `${open}` : "🎉";
+        btn.appendChild(mark);
+      }
+      btn.addEventListener("click", () => openWeek(date));
+      grid.appendChild(btn);
+    }
+
+    for (let i = 0; i < trailing; i++) blank(leading + daysInMonth + i);
+  }
+
+  function renderWeek() {
+    const end = addDays(weekStart, 6);
+    const range = weekStart.getMonth() === end.getMonth()
+      ? `${SHORT[weekStart.getMonth()]} ${weekStart.getDate()}–${end.getDate()}`
+      : `${SHORT[weekStart.getMonth()]} ${weekStart.getDate()} – ${SHORT[end.getMonth()]} ${end.getDate()}`;
+    setTitle(weekStart.getMonth(), range, end.getFullYear());
+
+    const week = $("week");
+    week.innerHTML = "";
+    for (let i = 0; i < 7; i++) {
+      const date = addDays(weekStart, i);
+      const key = keyOf(date);
+      const items = itemsIn(key);
+
+      const col = document.createElement("div");
+      col.className = "week-day";
+      col.style.setProperty("--day", DAY_COLOR[i]);
+      if (sameDay(date, now)) col.classList.add("today");
+      if (isWeekend(date)) col.classList.add("weekend");
+
+      const label = document.createElement("div");
+      label.className = "label";
+      label.innerHTML = `<span class="emo">${DAY_EMOJI[i]}</span><span class="wd">${WEEKDAYS[date.getDay()]}</span><span class="num">${date.getDate()}</span>`;
+
+      const body = document.createElement("div");
+      body.className = "body";
+
+      const ul = document.createElement("ul");
+      ul.className = "items";
+      for (const item of items) ul.appendChild(makeItem(item, key, true));
+      body.appendChild(ul);
+
+      if (items.length && items.every(x => x.done)) {
+        const yay = document.createElement("div");
+        yay.className = "yay";
+        yay.textContent = "🌟 all done!";
+        body.appendChild(yay);
+      }
+
+      body.appendChild(makeAddInput(key, "+ add a to-do", `Add a to-do for ${WEEKDAYS[date.getDay()]} ${date.getDate()}`));
+      col.append(label, body);
+      makeDropZone(col, ul, key);
+      week.appendChild(col);
+    }
+
+    const sl = $("scratchList");
+    sl.innerHTML = "";
+    for (const item of itemsIn("scratch")) sl.appendChild(makeItem(item, "scratch", false));
+  }
+
+  function makeAddInput(listName, placeholder, ariaLabel) {
+    const input = document.createElement("input");
+    input.className = "add";
+    input.dataset.list = listName;
+    input.placeholder = placeholder;
+    input.setAttribute("aria-label", ariaLabel);
+    input.enterKeyHint = "done";
+    wireAddInput(input, listName);
+    return input;
+  }
+
+  function wireAddInput(input, listName) {
+    input.addEventListener("keydown", e => {
+      if (e.key !== "Enter" || e.isComposing) return;
+      const v = input.value.trim();
+      if (!v) return;
+      input.value = "";
+      addItem(listName, v);
+    });
+  }
+
+  function makeItem(item, listName, withCheckbox) {
+    const id = item.id;
+    const li = document.createElement("li");
+    li.className = "item" + (item.done && withCheckbox ? " done" : "");
+    li.draggable = true;
+
+    if (withCheckbox) {
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.className = "check";
+      cb.checked = item.done;
+      cb.setAttribute("aria-label", `Done: ${item.text}`);
+      cb.addEventListener("change", () => updateItem(id, { done: cb.checked }));
+      li.appendChild(cb);
+    } else {
+      const b = document.createElement("span");
+      b.className = "bullet";
+      b.textContent = "✦";
+      li.appendChild(b);
+    }
+
+    const txt = document.createElement("span");
+    txt.className = "txt";
+    txt.textContent = item.text;
+    txt.title = "double-click to edit, drag to move";
+    txt.addEventListener("dblclick", () => startEdit(txt, li, id));
+
+    const mv = document.createElement("button");
+    mv.className = "mv";
+    mv.textContent = "↪";
+    mv.title = "move to another day";
+    mv.setAttribute("aria-label", `Move: ${item.text}`);
+    mv.addEventListener("click", () => openMove(id));
+
+    const del = document.createElement("button");
+    del.className = "del";
+    del.innerHTML = "&times;";
+    del.setAttribute("aria-label", `Delete: ${item.text}`);
+    del.addEventListener("click", () => removeItem(id));
+
+    li.append(txt, mv, del);
+
+    li.addEventListener("dragstart", e => {
+      drag = { id };
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", item.text);
+      setTimeout(() => li.classList.add("dragging"), 0);
+    });
+    li.addEventListener("dragend", () => {
+      li.classList.remove("dragging");
+      clearDropMarks();
+      drag = null;
+    });
+    return li;
+  }
+
+  function startEdit(txt, li, id) {
+    let cancelled = false;
+    li.draggable = false;
+    txt.contentEditable = "true";
+    txt.focus();
+    const range = document.createRange();
+    range.selectNodeContents(txt);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+
+    txt.addEventListener("keydown", e => {
+      if (e.key === "Enter") { e.preventDefault(); txt.blur(); }
+      if (e.key === "Escape") { e.stopPropagation(); cancelled = true; txt.blur(); }
+    });
+    txt.addEventListener("blur", () => {
+      txt.contentEditable = "false";
+      li.draggable = true;
+      const t = txt.textContent.trim();
+      const it = data.items[id];
+      if (cancelled || !it || t === it.text) { render(); return; }
+      if (!t) removeItem(id);
+      else updateItem(id, { text: t });
+    }, { once: true });
+  }
+
+  /* ---------- drag & drop (mouse) ---------- */
+  function realItems(ul) {
+    return [...ul.querySelectorAll(".item:not(.dragging)")];
+  }
+
+  function makeDropZone(zone, ul, listName) {
+    zone.addEventListener("dragover", e => {
+      if (!drag) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      document.querySelectorAll(".over").forEach(z => { if (z !== zone) z.classList.remove("over"); });
+      zone.classList.add("over");
+
+      // show a dashed line where the item will land
+      const items = realItems(ul);
+      let idx = items.findIndex(li => {
+        const r = li.getBoundingClientRect();
+        return e.clientY < r.top + r.height / 2;
+      });
+      if (idx < 0) idx = items.length;
+      document.querySelectorAll(".placeholder").forEach(p => { if (p.parentNode !== ul) p.remove(); });
+      const ph = ul.querySelector(".placeholder") || Object.assign(document.createElement("li"), { className: "placeholder" });
+      const before = items[idx] || null;
+      if (ph.nextSibling !== before || ph.parentNode !== ul) ul.insertBefore(ph, before);
+    });
+    zone.addEventListener("dragleave", e => {
+      if (zone.contains(e.relatedTarget)) return;
+      zone.classList.remove("over");
+      const ph = ul.querySelector(".placeholder");
+      if (ph) ph.remove();
+    });
+    zone.addEventListener("drop", e => {
+      if (!drag) return;
+      e.preventDefault();
+      const ph = ul.querySelector(".placeholder");
+      let index = realItems(ul).length;
+      if (ph) {
+        index = [...ul.children].filter(el => el === ph || (el.classList.contains("item") && !el.classList.contains("dragging"))).indexOf(ph);
+      }
+      const { id } = drag;
+      clearDropMarks();
+      drag = null;
+      moveItem(id, listName, index);
+    });
+  }
+
+  function clearDropMarks() {
+    document.querySelectorAll(".placeholder").forEach(p => p.remove());
+    document.querySelectorAll(".over").forEach(z => z.classList.remove("over"));
+  }
+
+  /* ---------- tap-to-move sheet (works on phones) ---------- */
+  function openMove(id) {
+    const it = data.items[id];
+    if (!it) return;
+    moveId = id;
+    $("moveTitle").textContent = `move “${it.text}” to…`;
+    const base = view === "week" ? weekStart : mondayOf(it.list === "scratch" ? now : dateFromKey(it.list));
+    const box = $("moveDays");
+    box.innerHTML = "";
+    for (let i = 0; i < 7; i++) {
+      const date = addDays(base, i);
+      const key = keyOf(date);
+      const b = document.createElement("button");
+      b.className = "pick" + (key === it.list ? " current" : "");
+      b.style.setProperty("--day", DAY_COLOR[i]);
+      b.innerHTML = `<span class="pe">${DAY_EMOJI[i]}</span><span class="pd">${date.getDate()}</span><span class="pw">${WEEKDAYS[date.getDay()].slice(0, 3).toLowerCase()}</span>`;
+      b.addEventListener("click", () => moveTo(key));
+      box.appendChild(b);
+    }
+    $("moveScratch").classList.toggle("current", it.list === "scratch");
+    $("moveDate").value = it.list === "scratch" ? keyOf(now) : it.list;
+    openSheet("moveSheet");
+  }
+
+  function moveTo(list) {
+    const id = moveId;
+    closeSheets();
+    if (!id || !data.items[id]) return;
+    moveItem(id, list, itemsIn(list).filter(i => i.id !== id).length);
+  }
+
+  $("moveScratch").addEventListener("click", () => moveTo("scratch"));
+  $("moveDateGo").addEventListener("click", () => {
+    const v = $("moveDate").value;
+    if (isDateKey(v)) moveTo(v);
+  });
+
+  function openSheet(id) {
+    closeSheets();
+    $(id).hidden = false;
+  }
+  function closeSheets() {
+    document.querySelectorAll(".overlay").forEach(o => o.hidden = true);
+  }
+  document.querySelectorAll(".overlay").forEach(o => {
+    o.addEventListener("click", e => { if (e.target === o || e.target.closest("[data-close]")) closeSheets(); });
+  });
+
+  /* ---------- GitHub sync ---------- */
+  const STATUS = {
+    off: "🔒 on this device only",
+    checking: "🔄 syncing…",
+    saving: "⏳ saving…",
+    synced: "☁️ synced",
+    offline: "📴 offline · saved here",
+    error: "⚠️ sync problem",
+  };
+  let pushTimer = null;
+  let syncing = null;
+  let syncAgain = false;
+
+  const connected = () => !!(settings.owner && settings.repo && settings.token);
+
+  function setStatus(state, detail) {
+    const b = $("syncBtn");
+    b.textContent = STATUS[state];
+    b.classList.toggle("error", state === "error");
+    b.title = detail || "Sync settings";
+    b.dataset.state = state;
+  }
+
+  function ghHeaders(token) {
+    return {
+      "Accept": "application/vnd.github+json",
+      "Authorization": `Bearer ${token}`,
+      "X-GitHub-Api-Version": "2022-11-28",
+    };
+  }
+  const repoUrl = s => `${API}/repos/${encodeURIComponent(s.owner)}/${encodeURIComponent(s.repo)}`;
+  const fileUrl = s => `${repoUrl(s)}/contents/${DATA_PATH}`;
+
+  function b64encode(str) {
+    const bytes = new TextEncoder().encode(str);
+    let bin = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(bin);
+  }
+  function b64decode(b64) {
+    const bin = atob(b64.replace(/\s/g, ""));
+    return new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0)));
+  }
+
+  function httpError(res) {
+    const e = new Error(`GitHub said ${res.status}`);
+    e.status = res.status;
+    return e;
+  }
+
+  async function ghGet() {
+    const res = await fetch(fileUrl(settings), { headers: ghHeaders(settings.token), cache: "no-store" });
+    if (res.status === 404) {
+      // either the file doesn't exist yet (fine) or the repo isn't reachable (not fine)
+      const repo = await fetch(repoUrl(settings), { headers: ghHeaders(settings.token), cache: "no-store" });
+      if (!repo.ok) throw httpError(repo);
+      return { sha: null, data: null };
+    }
+    if (!res.ok) throw httpError(res);
+    const j = await res.json();
+    return { sha: j.sha, data: normalize(JSON.parse(b64decode(j.content))) };
+  }
+
+  async function ghPut(content, sha) {
+    const device = /iPhone|iPad|Android/i.test(navigator.userAgent) ? "phone" : "laptop";
+    const body = { message: `update to-dos (${device})`, content: b64encode(JSON.stringify(content, null, 1)) };
+    if (sha) body.sha = sha;
+    const res = await fetch(fileUrl(settings), {
+      method: "PUT",
+      headers: { ...ghHeaders(settings.token), "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (res.status === 409 || res.status === 422) { const e = httpError(res); e.conflict = true; throw e; }
+    if (!res.ok) throw httpError(res);
+    return (await res.json()).content.sha;
+  }
+
+  function schedulePush() {
+    clearTimeout(pushTimer);
+    if (!connected()) { setStatus("off"); return; }
+    setStatus("saving");
+    pushTimer = setTimeout(sync, 2500);
+  }
+
+  // pull the latest from GitHub, merge it with this device, push back if anything differs
+  function sync() {
+    clearTimeout(pushTimer);
+    if (!connected()) { setStatus("off"); return Promise.resolve(); }
+    if (!navigator.onLine) { setStatus("offline"); return Promise.resolve(); }
+    if (syncing) { syncAgain = true; return syncing; }
+
+    syncing = (async () => {
+      setStatus(meta.dirty ? "saving" : "checking");
+      try {
+        for (let attempt = 0; attempt < 4; attempt++) {
+          const remote = await ghGet();
+          const merged = remote.data ? merge(data, remote.data) : data;
+          if (stable(merged) !== stable(data)) {
+            data = merged;
+            saveLocal();
+            render();
+          }
+          if (remote.data && stable(merged) === stable(remote.data)) {
+            meta = { sha: remote.sha, dirty: false };
+            saveMeta();
+            setStatus("synced", `last synced ${new Date().toLocaleTimeString()}`);
+            return;
+          }
+          try {
+            const sha = await ghPut(merged, remote.sha);
+            meta = { sha, dirty: false };
+            saveMeta();
+            setStatus("synced", `last synced ${new Date().toLocaleTimeString()}`);
+            return;
+          } catch (e) {
+            if (!e.conflict) throw e; // someone else saved in between: loop, re-read, merge again
+          }
+        }
+        throw new Error("GitHub kept changing underneath us, will retry");
+      } catch (e) {
+        if (e.status === 401) setStatus("error", "the token was rejected (expired or wrong?) — tap to fix");
+        else if (e.status === 403 || e.status === 404) setStatus("error", "the token can't reach that repo — tap to check settings");
+        else if (e instanceof TypeError || !navigator.onLine) setStatus("offline", "couldn't reach GitHub, changes are saved on this device");
+        else setStatus("error", e.message);
+        throw e;
+      } finally {
+        syncing = null;
+        if (syncAgain) { syncAgain = false; setTimeout(() => sync().catch(() => {}), 0); }
+      }
+    })();
+    return syncing;
+  }
+  const quietSync = () => sync().catch(() => {});
+
+  /* ---------- settings sheet ---------- */
+  function openSettings() {
+    const guessOwner = location.hostname.endsWith(".github.io") ? location.hostname.split(".")[0] : "";
+    $("setOwner").value = settings.owner || guessOwner;
+    $("setRepo").value = settings.repo || "calendar-data";
+    $("setToken").value = "";
+    $("setToken").placeholder = settings.token ? "•••••• saved (leave blank to keep)" : "github_pat_…";
+    $("disconnectBtn").hidden = !settings.token;
+    showMsg(connected() ? `${$("syncBtn").textContent}${$("syncBtn").title !== "Sync settings" ? " — " + $("syncBtn").title : ""}` : "");
+    openSheet("settingsSheet");
+  }
+
+  function showMsg(text, bad) {
+    $("setMsg").textContent = text;
+    $("setMsg").classList.toggle("bad", !!bad);
+  }
+
+  $("syncBtn").addEventListener("click", openSettings);
+
+  $("connectBtn").addEventListener("click", async () => {
+    const owner = $("setOwner").value.trim();
+    const repo = $("setRepo").value.trim();
+    const token = $("setToken").value.trim() || settings.token;
+    if (!owner || !repo || !token) { showMsg("fill in all three, please ✏️", true); return; }
+
+    const btn = $("connectBtn");
+    btn.disabled = true;
+    showMsg("checking the repo…");
+    try {
+      const res = await fetch(repoUrl({ owner, repo }), { headers: ghHeaders(token), cache: "no-store" });
+      if (res.status === 401) throw new Error("GitHub didn't accept that token.");
+      if (!res.ok) throw new Error("Can't see that repo with this token. Check the name, and that the token was given access to it.");
+      const info = await res.json();
+      if (!info.private) throw new Error("⚠️ That repo is PUBLIC, so anyone could read your to-dos. Make it private first.");
+
+      const changed = owner !== settings.owner || repo !== settings.repo;
+      settings = { owner, repo, token };
+      localStorage.setItem(KEY_SETTINGS, JSON.stringify(settings));
+      if (changed) meta.sha = null;
+      showMsg("connected! syncing…");
+      await sync();
+      showMsg("☁️ all synced. Your to-dos are backed up in your private repo.");
+      $("setToken").value = "";
+      $("setToken").placeholder = "•••••• saved (leave blank to keep)";
+      $("disconnectBtn").hidden = false;
+    } catch (e) {
+      showMsg(e.status ? $("syncBtn").title : e.message, true);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  $("disconnectBtn").addEventListener("click", () => {
+    settings = { owner: settings.owner, repo: settings.repo }; // forget the token, keep the names
+    localStorage.setItem(KEY_SETTINGS, JSON.stringify(settings));
+    clearTimeout(pushTimer);
+    setStatus("off");
+    $("disconnectBtn").hidden = true;
+    $("setToken").placeholder = "github_pat_…";
+    showMsg("disconnected. To-dos stay on this device; the token is forgotten here.");
+  });
+
+  /* ---------- backup / restore ---------- */
+  $("exportBtn").addEventListener("click", () => {
+    const blob = new Blob([JSON.stringify(data, null, 1)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `calendar-backup-${keyOf(new Date())}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    showMsg("⬇ backup downloaded");
+  });
+  $("importBtn").addEventListener("click", () => $("importFile").click());
+  $("importFile").addEventListener("change", async e => {
+    const file = e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    try {
+      const incoming = normalize(JSON.parse(await file.text()));
+      const n = Object.keys(incoming.items).length;
+      data = merge(data, incoming);
+      commit();
+      showMsg(`⬆ restored ${n} to-do${n === 1 ? "" : "s"} (merged with what's here)`);
+    } catch (err) {
+      showMsg("that file doesn't look like a calendar backup 🤔", true);
+    }
+  });
+
+  /* ---------- navigation ---------- */
+  function openWeek(date) {
+    selectedKey = keyOf(date);
+    weekStart = mondayOf(date);
+    view = "week";
+    render();
+  }
+
+  function backToMonth() {
+    // return to the month of the selected day if it's in this week, else the week's Monday
+    const sel = selectedKey ? dateFromKey(selectedKey) : null;
+    const ref = sel && sel >= weekStart && sel <= addDays(weekStart, 6) ? sel : weekStart;
+    viewYear = ref.getFullYear();
+    viewMonth = ref.getMonth();
+    view = "month";
+    render();
+  }
+
+  // scratchpad: static input + drop zone, set up once
+  wireAddInput($("scratchAdd"), "scratch");
+  $("scratchAdd").enterKeyHint = "done";
+  makeDropZone($("scratch"), $("scratchList"), "scratch");
+
+  document.addEventListener("keydown", e => {
+    if (e.key !== "Escape") return;
+    if (document.querySelector(".overlay:not([hidden])")) { closeSheets(); return; }
+    if (e.target.matches("input, [contenteditable='true']")) { e.target.blur(); return; }
+    if (view === "week") backToMonth();
+  });
+  // a redraw that was held back during an edit happens once the edit ends
+  document.addEventListener("focusout", () => setTimeout(() => { if (pendingRender) render(); }, 0));
+
+  $("back").addEventListener("click", backToMonth);
+  $("prev").addEventListener("click", () => {
+    if (view === "week") weekStart = addDays(weekStart, -7);
+    else { viewMonth--; if (viewMonth < 0) { viewMonth = 11; viewYear--; } }
+    render();
+  });
+  $("next").addEventListener("click", () => {
+    if (view === "week") weekStart = addDays(weekStart, 7);
+    else { viewMonth++; if (viewMonth > 11) { viewMonth = 0; viewYear++; } }
+    render();
+  });
+  $("today").addEventListener("click", () => {
+    now = new Date();
+    if (view === "week") weekStart = mondayOf(now);
+    else { viewYear = now.getFullYear(); viewMonth = now.getMonth(); }
+    render();
+  });
+
+  /* ---------- keep in sync while the app is used ---------- */
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      const fresh = new Date();
+      if (!sameDay(fresh, now)) { now = fresh; render(); } // app left open past midnight
+      quietSync();
+    } else if (meta.dirty) {
+      quietSync(); // save before the phone puts the app to sleep
+    }
+  });
+  window.addEventListener("online", quietSync);
+  window.addEventListener("offline", () => connected() && setStatus("offline"));
+  setInterval(() => { if (document.visibilityState === "visible") quietSync(); }, 60000);
+
+  // ask the browser not to clear this app's storage when space runs low
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+
+  // offline support + installable app
+  if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  }
+
+  saveLocal(); // writes the converted format the first time after an upgrade
+  setStatus(connected() ? (meta.dirty ? "saving" : "checking") : "off");
+  render();
+  quietSync();
+</script>
+</body>
+</html>
