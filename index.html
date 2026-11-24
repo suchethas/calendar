@@ -284,14 +284,15 @@
   }
   .painting svg { display: block; width: 100%; height: auto; }
   .painting .cell-off { fill: #fffdf7; stroke: #e6dfd3; stroke-width: .045; }
-  .painting .num { font-family: "Patrick Hand", sans-serif; font-size: .46px; fill: #b4aa9b; text-anchor: middle; dominant-baseline: central; }
+  .painting .num { font-family: "Patrick Hand", sans-serif; font-size: .46px; fill: #c9c0b2; text-anchor: middle; dominant-baseline: central; }
   .painting .fresh { transform-box: fill-box; transform-origin: center; animation: paint .5s cubic-bezier(.2, 1.7, .4, 1) both; }
   @keyframes paint { from { transform: scale(0); } }
   .painting .hint { margin: 8px 0 0; font-size: .95rem; opacity: .65; }
   .painting .bar { height: 8px; margin-top: 8px; border-radius: 4px; background: #efe7da; overflow: hidden; }
   .painting .bar span { display: block; height: 100%; border-radius: 4px; background: linear-gradient(90deg, #ff6b6b, #ff9f43, #ffd23f, #2fbf71, #3d9bff, #9b6bff); }
   @media (prefers-reduced-motion: reduce) { .painting .fresh { animation: none; } }
-  @media (max-width: 640px) { .painting .num { display: none; } }
+  /* phones: squares are small, so the numbers take up more of each square to stay readable */
+  @media (max-width: 640px) { .painting .num { font-size: .6px; } }
 
   /* ---------- week view ---------- */
   .calendar.wide { width: min(1700px, 100%); padding: 24px 26px 26px; }
