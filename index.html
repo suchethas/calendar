@@ -242,20 +242,58 @@
     padding: 14px 6px 2px;
     border-top: 2px dashed var(--rule);
   }
-  .pie { position: relative; flex: 0 0 auto; width: 104px; height: 104px; }
-  .pie svg { width: 100%; height: 100%; transform: rotate(-90deg); overflow: visible; }
-  .pie .badge {
+  /* clean donut: warm arc = what's left of today, the sun/moon rides the ring at "now" */
+  .dial { position: relative; flex: 0 0 auto; width: 118px; height: 118px; }
+  .dial svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .dial circle { fill: none; stroke-width: 3.4; }
+  .dial .track { stroke: #efe7da; }
+  .dial .left { stroke: url(#warm); stroke-linecap: round; }
+  .dial .rider {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    font-size: 1.25rem;
+    line-height: 1;
+    filter: drop-shadow(0 1px 1px rgba(0,0,0,.15));
+  }
+  .dial .mid {
     position: absolute;
     inset: 0;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    font-size: 1.35rem;
+    line-height: 1;
   }
+  .dial .hm { font-family: "Caveat", cursive; font-size: 1.75rem; font-weight: 700; }
+  .dial .lbl { font-size: .8rem; opacity: .6; margin-top: 2px; }
   .tl-text { min-width: 0; }
-  .tl-text .big { font-family: "Caveat", cursive; font-size: 2.3rem; font-weight: 700; line-height: 1.05; }
-  .tl-text .big b { background: linear-gradient(transparent 55%, #ffd36b 55% 92%, transparent 92%); padding: 0 3px; }
+  .tl-text .big { font-family: "Caveat", cursive; font-size: 1.9rem; font-weight: 700; line-height: 1.1; }
   .tl-text .sub { margin-top: 4px; font-size: 1.05rem; opacity: .75; }
+  .daybar { position: relative; height: 8px; margin-top: 10px; border-radius: 4px; background: #efe7da; overflow: hidden; }
+  .daybar span { position: absolute; inset: 0 auto 0 0; border-radius: 4px; background: linear-gradient(90deg, #ffe45c, #ff9f43); }
+
+  /* ---------- monthly paint-by-number ---------- */
+  .painting { margin-top: 18px; padding-top: 14px; border-top: 2px dashed var(--rule); }
+  .painting .ph { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+  .painting h3 { margin: 0; font-family: "Caveat", cursive; font-size: 1.9rem; line-height: 1; }
+  .painting .count { font-size: 1rem; opacity: .75; }
+  .painting .canvas {
+    position: relative;
+    padding: 6px;
+    background: #fff;
+    border-radius: 4px;
+    box-shadow: 0 1px 0 rgba(0,0,0,.04), 0 6px 16px rgba(90, 60, 30, .12);
+  }
+  .painting svg { display: block; width: 100%; height: auto; }
+  .painting .cell-off { fill: #fffdf7; stroke: #e6dfd3; stroke-width: .045; }
+  .painting .num { font-family: "Patrick Hand", sans-serif; font-size: .46px; fill: #b4aa9b; text-anchor: middle; dominant-baseline: central; }
+  .painting .fresh { transform-box: fill-box; transform-origin: center; animation: paint .5s cubic-bezier(.2, 1.7, .4, 1) both; }
+  @keyframes paint { from { transform: scale(0); } }
+  .painting .hint { margin: 8px 0 0; font-size: .95rem; opacity: .65; }
+  .painting .bar { height: 8px; margin-top: 8px; border-radius: 4px; background: #efe7da; overflow: hidden; }
+  .painting .bar span { display: block; height: 100%; border-radius: 4px; background: linear-gradient(90deg, #ff6b6b, #ff9f43, #ffd23f, #2fbf71, #3d9bff, #9b6bff); }
+  @media (prefers-reduced-motion: reduce) { .painting .fresh { animation: none; } }
+  @media (max-width: 640px) { .painting .num { display: none; } }
 
   /* ---------- week view ---------- */
   .calendar.wide { width: min(1700px, 100%); padding: 24px 26px 26px; }
@@ -629,6 +667,7 @@
     .day { font-size: 1.1rem; padding: 4px 5px; }
     .day .mark { font-size: .72rem; line-height: 16px; min-width: 16px; padding: 0 4px; bottom: 3px; right: 3px; }
     .day.today::after { font-size: .75rem; top: 2px; right: 3px; }
+    .day .mark.all-done { font-size: .72rem; }
     .week { grid-template-columns: 1fr; }
     /* solid line between days */
     .week-day { min-height: 120px; flex-direction: row; gap: 12px; border-right: none; border-bottom: 2px solid rgba(42, 42, 42, .3); padding: 12px 4px; }
@@ -660,6 +699,7 @@
       <div class="weekdays" id="weekdays"></div>
       <div class="grid" id="grid"></div>
       <div class="today-left" id="todayLeft"></div>
+      <div class="painting" id="painting"></div>
     </section>
 
     <section id="weekView" hidden>
@@ -979,9 +1019,11 @@
 
     for (let i = 0; i < trailing; i++) blank(leading + daysInMonth + i);
     renderTodayLeft();
+    renderPainting();
   }
 
-  /* pie-chart clock: warm slice = what's left of today, hatched = already gone, hand = now */
+  /* donut clock: the warm arc is what's left of today (runs from now round to midnight at the top),
+     and the sun/moon sits on the ring at the current time */
   function renderTodayLeft() {
     const t = new Date();
     const midnight = new Date(t.getFullYear(), t.getMonth(), t.getDate() + 1);
@@ -989,11 +1031,12 @@
     const gone = 1 - minsLeft / 1440;               // fraction of the day used up
     const h = Math.floor(minsLeft / 60), m = minsLeft % 60;
     const hour = t.getHours();
-    const emoji = hour < 5 ? "🌙" : hour < 11 ? "🌅" : hour < 17 ? "☀️" : hour < 21 ? "🌇" : "🌙";
+    const rider = hour >= 6 && hour < 18 ? "☀️" : hour >= 18 && hour < 21 ? "🌇" : "🌙";
+    const mood = hour < 5 ? "night owl mode 🦉" : hour < 11 ? "good morning ☕" : hour < 17 ? "keep it going 🚀" : hour < 21 ? "golden hour 🌇" : "wind-down time 🌙";
 
-    const C = 2 * Math.PI * 8;                      // slice circle: r=8, stroke 16 → a pie of radius 16
-    const angle = gone * 2 * Math.PI;
-    const hx = 18 + 15 * Math.cos(angle), hy = 18 + 15 * Math.sin(angle);
+    // position on the ring (r = 15.9155 of 36 → 44.2% of the box), clockwise from the top
+    const a = gone * 2 * Math.PI, R = 44.2;
+    const rx = 50 + R * Math.sin(a), ry = 50 - R * Math.cos(a);
 
     const todays = itemsIn(keyOf(t));
     const open = todays.filter(i => !i.done).length;
@@ -1002,29 +1045,127 @@
       : "all done for today 🌟";
 
     $("todayLeft").innerHTML = `
-      <div class="pie" role="img" aria-label="${h} hours ${m} minutes left today">
+      <div class="dial" role="img" aria-label="${h} hours ${m} minutes left today">
         <svg viewBox="0 0 36 36" aria-hidden="true">
-          <defs>
-            <pattern id="hatch" width="2.4" height="2.4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-              <rect width="2.4" height="2.4" fill="#efe9df"/><line x1="0" y1="0" x2="0" y2="2.4" stroke="#cfc6b8" stroke-width="1"/>
-            </pattern>
-            <linearGradient id="warm" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0" stop-color="#ffe45c"/><stop offset="1" stop-color="#ff9f43"/>
-            </linearGradient>
-          </defs>
-          <circle cx="18" cy="18" r="16" fill="url(#hatch)"/>
-          <circle cx="18" cy="18" r="8" fill="none" stroke="url(#warm)" stroke-width="16"
-                  stroke-dasharray="${(1 - gone) * C} ${C}" stroke-dashoffset="${-gone * C}"/>
-          <circle cx="18" cy="18" r="16" fill="none" stroke="#2a2a2a" stroke-width="1.3"/>
-          <line x1="18" y1="18" x2="${hx}" y2="${hy}" stroke="#2a2a2a" stroke-width="1.6" stroke-linecap="round"/>
-          <circle cx="18" cy="18" r="6.2" fill="#fffdf7" stroke="#2a2a2a" stroke-width="1.1"/>
+          <defs><linearGradient id="warm" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#ffd23f"/><stop offset="1" stop-color="#ff7a59"/>
+          </linearGradient></defs>
+          <circle class="track" cx="18" cy="18" r="15.9155"/>
+          <circle class="left" cx="18" cy="18" r="15.9155" stroke-dasharray="${(1 - gone) * 100} 100" stroke-dashoffset="${-gone * 100}"/>
         </svg>
-        <span class="badge">${emoji}</span>
+        <span class="rider" style="left:${rx}%;top:${ry}%">${rider}</span>
+        <div class="mid"><span class="hm">${h}h ${String(m).padStart(2, "0")}m</span><span class="lbl">left today</span></div>
       </div>
       <div class="tl-text">
-        <div class="big"><b>${h}h ${String(m).padStart(2, "0")}m</b> left today</div>
+        <div class="big">${mood}</div>
         <div class="sub">${sub}</div>
+        <div class="daybar" title="${Math.round(gone * 100)}% of today has gone by"><span style="width:${gone * 100}%"></span></div>
       </div>`;
+  }
+
+  /* ---------- monthly paint-by-number ----------
+     The month's emoji is drawn big on a hidden canvas, shrunk to a 25×20 grid and boiled down
+     to a few paint colours. Each finished to-do that month paints PER_TODO squares. */
+  const GRID_W = 25, GRID_H = 20, CELLS = GRID_W * GRID_H, PER_TODO = 10;
+  const paintings = new Map();     // "2026-10" → { colors, cells, rank }
+  const lastPainted = new Map();   // how many squares were painted last time we drew it (for the pop-in)
+
+  function seeded(seed) { // small deterministic random generator
+    return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  }
+
+  function buildPainting(year, month) {
+    const S = 12, cw = GRID_W * S, ch = GRID_H * S;
+    const canvas = document.createElement("canvas");
+    canvas.width = cw; canvas.height = ch;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    const bg = MONTH_COLOR[month];
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, cw, ch);
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = `${ch * 0.86}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
+    ctx.fillText(MONTH_EMOJI[month], cw / 2, ch / 2 + ch * 0.04);
+    const px = ctx.getImageData(0, 0, cw, ch).data;
+
+    // average colour of each square
+    const avg = [];
+    for (let gy = 0; gy < GRID_H; gy++) for (let gx = 0; gx < GRID_W; gx++) {
+      let r = 0, g = 0, b = 0;
+      for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+        const i = ((gy * S + y) * cw + gx * S + x) * 4;
+        r += px[i]; g += px[i + 1]; b += px[i + 2];
+      }
+      avg.push([r / (S * S), g / (S * S), b / (S * S)]);
+    }
+
+    // boil down to a handful of paints (k-means, started from evenly spread brightness levels)
+    const K = 7;
+    const lum = c => c[0] * .3 + c[1] * .59 + c[2] * .11;
+    const sorted = [...avg].sort((p, q) => lum(p) - lum(q));
+    let centers = Array.from({ length: K }, (_, k) => [...sorted[Math.floor((k + .5) / K * sorted.length)]]);
+    const cells = new Uint8Array(CELLS);
+    const d2 = (p, q) => (p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2 + (p[2] - q[2]) ** 2;
+    for (let it = 0; it < 8; it++) {
+      avg.forEach((c, i) => { let best = 0; centers.forEach((z, k) => { if (d2(c, z) < d2(c, centers[best])) best = k; }); cells[i] = best; });
+      centers = centers.map((z, k) => {
+        const mine = avg.filter((_, i) => cells[i] === k);
+        return mine.length ? [0, 1, 2].map(ch2 => mine.reduce((s, c) => s + c[ch2], 0) / mine.length) : z;
+      });
+    }
+    // number the paints by how much they're used (1 = most squares), drop unused ones
+    const used = centers.map((_, k) => ({ k, n: cells.filter(c => c === k).length })).filter(u => u.n).sort((p, q) => q.n - p.n);
+    const remap = new Map(used.map((u, i) => [u.k, i]));
+    const colors = used.map(u => "#" + centers[u.k].map(v => Math.round(v).toString(16).padStart(2, "0")).join(""));
+    for (let i = 0; i < CELLS; i++) cells[i] = remap.get(cells[i]);
+
+    // the order squares get painted in: scattered, but the same every time for this month
+    const rnd = seeded(year * 12 + month + 1);
+    const order = Array.from({ length: CELLS }, (_, i) => i);
+    for (let i = CELLS - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
+    const rank = new Uint16Array(CELLS);
+    order.forEach((cell, r) => { rank[cell] = r; });
+    return { colors, cells, rank };
+  }
+
+  function renderPainting() {
+    const id = `${viewYear}-${viewMonth}`;
+    if (!paintings.has(id)) paintings.set(id, buildPainting(viewYear, viewMonth));
+    const { colors, cells, rank } = paintings.get(id);
+
+    const prefix = `${viewYear}-${String(viewMonth + 1).padStart(2, "0")}-`;
+    const done = Object.values(data.items).filter(i => i.done && i.list.startsWith(prefix)).length;
+    const painted = Math.min(CELLS, done * PER_TODO);
+    const before = lastPainted.has(id) ? lastPainted.get(id) : painted; // first look: no pop-in
+    lastPainted.set(id, painted);
+
+    let svg = "";
+    for (let i = 0; i < CELLS; i++) {
+      const x = i % GRID_W, y = Math.floor(i / GRID_W);
+      if (rank[i] < painted) {
+        const fresh = rank[i] >= before ? ` class="fresh" style="animation-delay:${((rank[i] - before) * 25) % 900}ms"` : "";
+        svg += `<rect x="${x}" y="${y}" width="1.02" height="1.02" fill="${colors[cells[i]]}"${fresh}/>`;
+      } else {
+        svg += `<rect class="cell-off" x="${x}" y="${y}" width="1" height="1"/><text class="num" x="${x + .5}" y="${y + .54}">${cells[i] + 1}</text>`;
+      }
+    }
+
+    const left = CELLS - painted;
+    const hint = painted === CELLS ? "🖼️ masterpiece! every square is painted"
+      : done === 0 ? `✨ finish a to-do this month to start painting (each one paints ${PER_TODO} squares)`
+      : `${Math.ceil(left / PER_TODO)} more finished to-do${Math.ceil(left / PER_TODO) === 1 ? "" : "s"} to complete the picture`;
+
+    $("painting").innerHTML = `
+      <div class="ph">
+        <h3>🎨 ${MONTHS[viewMonth].toLowerCase()}'s painting</h3>
+        <span class="count">${painted} / ${CELLS} squares</span>
+      </div>
+      <div class="canvas">
+        <svg viewBox="0 0 ${GRID_W} ${GRID_H}" role="img" aria-label="Paint-by-number picture, ${painted} of ${CELLS} squares painted">${svg}</svg>
+      </div>
+      <div class="bar"><span style="width:${painted / CELLS * 100}%"></span></div>
+      <p class="hint">${hint}</p>`;
   }
 
   function renderWeek() {
