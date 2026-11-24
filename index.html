@@ -347,7 +347,7 @@
   }
   .item:hover { background: color-mix(in srgb, var(--day) 10%, transparent); }
   .item.dragging { opacity: .3; }
-  .item .txt { flex: 1; min-width: 0; overflow-wrap: anywhere; outline: none; }
+  .item .txt { flex: 1; min-width: 0; overflow-wrap: break-word; outline: none; }
   .item .txt[contenteditable="true"] {
     cursor: text;
     background: #fff;
@@ -402,6 +402,20 @@
   .item:hover .del, .item:focus-within .del,
   .item:hover .mv, .item:focus-within .mv { opacity: .45; }
   .del:hover, .mv:hover { opacity: 1 !important; }
+  /* mouse: the buttons float over the end of the line on hover, so they never squeeze the text */
+  @media (hover: hover) {
+    .item { position: relative; }
+    .item .mv, .item .del {
+      position: absolute;
+      top: 0;
+      display: none;
+      background: var(--paper);
+      box-shadow: -6px 0 6px var(--paper);
+    }
+    .item .del { right: 0; }
+    .item .mv { right: 20px; }
+    .item:hover .mv, .item:hover .del, .item:focus-within .mv, .item:focus-within .del { display: block; }
+  }
   /* touch screens have no hover: always show the item buttons */
   @media (hover: none) {
     .del, .mv { opacity: .45; padding: 0 6px; }
@@ -420,6 +434,17 @@
     background: transparent;
     border: none;
     border-radius: 0;
+  }
+  /* "+ add a to-do" line on a day starts with an empty checkbox, so days read as checklists */
+  .add-row { display: flex; align-items: center; gap: 7px; padding: 0 3px; }
+  .add-row input.add { flex: 1; min-width: 0; padding: 0; }
+  .ghost-check {
+    flex: 0 0 auto;
+    width: 17px; height: 17px;
+    border: 2px dashed var(--day);
+    border-radius: var(--sketch);
+    background: #fff;
+    opacity: .6;
   }
   input.add::placeholder { color: color-mix(in srgb, var(--day) 70%, #888); opacity: .75; }
   input.add:focus { outline: none; background: color-mix(in srgb, var(--day) 10%, transparent); }
@@ -518,8 +543,12 @@
     .day .mark { font-size: .72rem; line-height: 16px; min-width: 16px; padding: 0 4px; bottom: 3px; right: 3px; }
     .day.today::after { font-size: .75rem; top: 2px; right: 3px; }
     .week { grid-template-columns: 1fr; }
-    .week-day { min-height: 120px; flex-direction: row; gap: 12px; border-right: none; border-bottom: 1.5px dashed var(--divider); padding: 10px 4px; }
-    .week-day .label { flex: 0 0 62px; }
+    /* solid line between days */
+    .week-day { min-height: 120px; flex-direction: row; gap: 12px; border-right: none; border-bottom: 2px solid rgba(42, 42, 42, .3); padding: 12px 4px; }
+    .week-day:last-child { border-bottom: none; }
+    /* coloured margin line between the date and its to-dos, like a notebook margin */
+    .week-day .wd { font-size: .95rem; }
+    .week-day .label { flex: 0 0 82px; min-width: 0; align-self: stretch; justify-content: flex-start; padding-right: 10px; border-right: 2.5px solid var(--day); }
     .week-day .num { font-size: 2.2rem; }
   }
 </style>
@@ -899,7 +928,13 @@
         body.appendChild(yay);
       }
 
-      body.appendChild(makeAddInput(key, "+ add a to-do", `Add a to-do for ${WEEKDAYS[date.getDay()]} ${date.getDate()}`));
+      const addRow = document.createElement("div");
+      addRow.className = "add-row";
+      const ghost = document.createElement("span");
+      ghost.className = "ghost-check";
+      ghost.setAttribute("aria-hidden", "true");
+      addRow.append(ghost, makeAddInput(key, "add a to-do…", `Add a to-do for ${WEEKDAYS[date.getDay()]} ${date.getDate()}`));
+      body.appendChild(addRow);
       col.append(label, body);
       makeDropZone(col, ul, key);
       week.appendChild(col);
