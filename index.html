@@ -223,6 +223,40 @@
   }
   .day .mark.all-done { background: none; font-size: 1rem; padding: 0; }
 
+  /* days already behind us: sage wash + a pencil line, like crossing them off a paper calendar */
+  .day.past {
+    background-color: #eaf2e3;
+    background-image: linear-gradient(to top right,
+      transparent calc(50% - 1px), rgba(80, 110, 70, .22) calc(50% - 1px),
+      rgba(80, 110, 70, .22) calc(50% + 1px), transparent calc(50% + 1px));
+  }
+  .day.past:hover { background-color: #dcebd2; }
+  .day.past .n { opacity: .5; }
+
+  /* ---------- "time left today" under the month ---------- */
+  .today-left {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    margin-top: 18px;
+    padding: 14px 6px 2px;
+    border-top: 2px dashed var(--rule);
+  }
+  .pie { position: relative; flex: 0 0 auto; width: 104px; height: 104px; }
+  .pie svg { width: 100%; height: 100%; transform: rotate(-90deg); overflow: visible; }
+  .pie .badge {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.35rem;
+  }
+  .tl-text { min-width: 0; }
+  .tl-text .big { font-family: "Caveat", cursive; font-size: 2.3rem; font-weight: 700; line-height: 1.05; }
+  .tl-text .big b { background: linear-gradient(transparent 55%, #ffd36b 55% 92%, transparent 92%); padding: 0 3px; }
+  .tl-text .sub { margin-top: 4px; font-size: 1.05rem; opacity: .75; }
+
   /* ---------- week view ---------- */
   .calendar.wide { width: min(1700px, 100%); padding: 24px 26px 26px; }
   .calendar.wide h1 { font-size: 2.8rem; }
@@ -377,10 +411,42 @@
     padding: 0 3px;
   }
   .item.done .txt {
+    color: var(--day);
     text-decoration: line-through;
     text-decoration-thickness: 2px;
     text-decoration-color: var(--day);
-    opacity: .4;
+    opacity: .55;
+  }
+  /* each finished to-do earns a sticker */
+  .sticker {
+    flex: 0 0 auto;
+    display: inline-block;
+    font-size: 1.05rem;
+    transform: rotate(var(--tilt, -8deg));
+  }
+
+  /* the moment something gets ticked off */
+  .item.just-done { animation: flash 1s ease-out; }
+  .item.just-done .sticker { animation: pop .55s cubic-bezier(.2, 1.9, .4, 1); }
+  .item.just-done .check { animation: pop .35s cubic-bezier(.2, 1.9, .4, 1); }
+  @keyframes flash { from { background: color-mix(in srgb, var(--day) 40%, transparent); } }
+  @keyframes pop { from { transform: scale(0) rotate(-45deg); } }
+
+  .burst { position: fixed; left: 0; top: 0; width: 0; height: 0; pointer-events: none; z-index: 50; }
+  .burst > * {
+    position: absolute;
+    left: 0; top: 0;
+    animation: fly var(--dur, .8s) cubic-bezier(.15, .7, .3, 1) forwards;
+  }
+  .burst i { width: 8px; height: 8px; margin: -4px; border-radius: 2px; background: var(--c); }
+  .burst span { font-size: 1rem; margin: -.6em; }
+  @keyframes fly {
+    0%   { transform: translate(0, 0) rotate(0) scale(.6); opacity: 1; }
+    100% { transform: translate(var(--dx), var(--dy)) rotate(var(--rot)) scale(1); opacity: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .item.just-done, .item.just-done .sticker, .item.just-done .check { animation: none; }
+    .burst { display: none; }
   }
   .item .bullet { flex: 0 0 auto; color: var(--day); }
 
@@ -593,6 +659,7 @@
     <section id="monthView">
       <div class="weekdays" id="weekdays"></div>
       <div class="grid" id="grid"></div>
+      <div class="today-left" id="todayLeft"></div>
     </section>
 
     <section id="weekView" hidden>
@@ -897,6 +964,7 @@
       btn.innerHTML = `<span class="n">${d}</span>`;
       btn.setAttribute("aria-label", `${MONTHS[viewMonth]} ${d}, ${viewYear}${items.length ? `, ${open} of ${items.length} to-dos open` : ""}`);
       if (sameDay(date, now)) btn.classList.add("today");
+      else if (date < now) btn.classList.add("past");
       if (isWeekend(date)) btn.classList.add("weekend");
       if (key === selectedKey) btn.classList.add("selected");
       if (items.length) {
@@ -910,6 +978,53 @@
     }
 
     for (let i = 0; i < trailing; i++) blank(leading + daysInMonth + i);
+    renderTodayLeft();
+  }
+
+  /* pie-chart clock: warm slice = what's left of today, hatched = already gone, hand = now */
+  function renderTodayLeft() {
+    const t = new Date();
+    const midnight = new Date(t.getFullYear(), t.getMonth(), t.getDate() + 1);
+    const minsLeft = Math.max(0, Math.round((midnight - t) / 60000));
+    const gone = 1 - minsLeft / 1440;               // fraction of the day used up
+    const h = Math.floor(minsLeft / 60), m = minsLeft % 60;
+    const hour = t.getHours();
+    const emoji = hour < 5 ? "🌙" : hour < 11 ? "🌅" : hour < 17 ? "☀️" : hour < 21 ? "🌇" : "🌙";
+
+    const C = 2 * Math.PI * 8;                      // slice circle: r=8, stroke 16 → a pie of radius 16
+    const angle = gone * 2 * Math.PI;
+    const hx = 18 + 15 * Math.cos(angle), hy = 18 + 15 * Math.sin(angle);
+
+    const todays = itemsIn(keyOf(t));
+    const open = todays.filter(i => !i.done).length;
+    const sub = !todays.length ? "nothing planned, enjoy it 🍃"
+      : open ? `${open} to-do${open === 1 ? "" : "s"} to go 💪`
+      : "all done for today 🌟";
+
+    $("todayLeft").innerHTML = `
+      <div class="pie" role="img" aria-label="${h} hours ${m} minutes left today">
+        <svg viewBox="0 0 36 36" aria-hidden="true">
+          <defs>
+            <pattern id="hatch" width="2.4" height="2.4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+              <rect width="2.4" height="2.4" fill="#efe9df"/><line x1="0" y1="0" x2="0" y2="2.4" stroke="#cfc6b8" stroke-width="1"/>
+            </pattern>
+            <linearGradient id="warm" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#ffe45c"/><stop offset="1" stop-color="#ff9f43"/>
+            </linearGradient>
+          </defs>
+          <circle cx="18" cy="18" r="16" fill="url(#hatch)"/>
+          <circle cx="18" cy="18" r="8" fill="none" stroke="url(#warm)" stroke-width="16"
+                  stroke-dasharray="${(1 - gone) * C} ${C}" stroke-dashoffset="${-gone * C}"/>
+          <circle cx="18" cy="18" r="16" fill="none" stroke="#2a2a2a" stroke-width="1.3"/>
+          <line x1="18" y1="18" x2="${hx}" y2="${hy}" stroke="#2a2a2a" stroke-width="1.6" stroke-linecap="round"/>
+          <circle cx="18" cy="18" r="6.2" fill="#fffdf7" stroke="#2a2a2a" stroke-width="1.1"/>
+        </svg>
+        <span class="badge">${emoji}</span>
+      </div>
+      <div class="tl-text">
+        <div class="big"><b>${h}h ${String(m).padStart(2, "0")}m</b> left today</div>
+        <div class="sub">${sub}</div>
+      </div>`;
   }
 
   function renderWeek() {
@@ -1031,8 +1146,18 @@
       cb.className = "check";
       cb.checked = item.done;
       cb.setAttribute("aria-label", `Done: ${item.text}`);
-      cb.addEventListener("change", () => updateItem(id, { done: cb.checked }));
+      cb.addEventListener("change", () => {
+        if (cb.checked) {
+          const r = cb.getBoundingClientRect();
+          const wholeDay = itemsIn(listName).every(i => i.id === id || i.done);
+          celebrate(r.left + r.width / 2, r.top + r.height / 2, wholeDay);
+          justDone = id;
+        }
+        updateItem(id, { done: cb.checked });
+        justDone = null;
+      });
       li.appendChild(cb);
+      if (id === justDone) li.classList.add("just-done");
     } else {
       const b = document.createElement("span");
       b.className = "bullet";
@@ -1059,7 +1184,17 @@
     del.setAttribute("aria-label", `Delete: ${item.text}`);
     del.addEventListener("click", () => removeItem(id));
 
-    li.append(txt, mv, del);
+    li.append(txt);
+    if (withCheckbox && item.done) {
+      const s = document.createElement("span");
+      s.className = "sticker";
+      const n = hash(id);
+      s.textContent = STICKERS[n % STICKERS.length];
+      s.style.setProperty("--tilt", `${(n % 25) - 12}deg`);
+      s.setAttribute("aria-hidden", "true");
+      li.append(s);
+    }
+    li.append(mv, del);
 
     li.addEventListener("dragstart", e => {
       drag = { id };
@@ -1073,6 +1208,37 @@
       drag = null;
     });
     return li;
+  }
+
+  /* ---------- the fun bit: stickers + confetti ---------- */
+  const STICKERS = ["⭐","🌈","🎉","💖","🍀","✨","🦄","👏","🏆","🌸","🍭","🚀","💯","🐝","🌟","🍩","🐣","🎈"];
+  const CONFETTI = ["#ff6b6b","#ff9f43","#ffd23f","#2fbf71","#3d9bff","#9b6bff","#ff5fa8"];
+  let justDone = null;
+  // same item → same sticker every time, on every device
+  function hash(s) { let h = 7; for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; }
+
+  function celebrate(x, y, big) {
+    if (navigator.vibrate) navigator.vibrate(big ? [20, 40, 30] : 15);
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const burst = document.createElement("div");
+    burst.className = "burst";
+    burst.style.transform = `translate(${x}px, ${y}px)`;
+    const count = big ? 34 : 16;
+    for (let i = 0; i < count; i++) {
+      const emoji = i % (big ? 4 : 6) === 0;
+      const p = document.createElement(emoji ? "span" : "i");
+      if (emoji) p.textContent = big ? ["🌟","🎉","✨","💖"][i % 4] : ["✨","⭐"][i % 2];
+      else p.style.setProperty("--c", CONFETTI[i % CONFETTI.length]);
+      const a = Math.random() * Math.PI * 2;
+      const dist = (big ? 70 : 40) + Math.random() * (big ? 90 : 45);
+      p.style.setProperty("--dx", `${Math.cos(a) * dist}px`);
+      p.style.setProperty("--dy", `${Math.sin(a) * dist - 20}px`);
+      p.style.setProperty("--rot", `${Math.random() * 540 - 270}deg`);
+      p.style.setProperty("--dur", `${0.6 + Math.random() * (big ? 0.7 : 0.35)}s`);
+      burst.appendChild(p);
+    }
+    document.body.appendChild(burst);
+    setTimeout(() => burst.remove(), big ? 1500 : 1100);
   }
 
   function startEdit(txt, li, id) {
@@ -1489,6 +1655,13 @@
   window.addEventListener("online", quietSync);
   window.addEventListener("offline", () => connected() && setStatus("offline"));
   setInterval(() => { if (document.visibilityState === "visible") quietSync(); }, 60000);
+  // keep the "time left today" clock ticking (and roll over to a new day at midnight)
+  setInterval(() => {
+    if (document.visibilityState !== "visible") return;
+    const t = new Date();
+    if (!sameDay(t, now)) { now = t; render(); }
+    else if (view === "month") renderTodayLeft();
+  }, 30000);
 
   // ask the browser not to clear this app's storage when space runs low
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
